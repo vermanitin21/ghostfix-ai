@@ -27,6 +27,9 @@ function nodes(children) {
     .map((child) => (child instanceof Node ? child : document.createTextNode(String(child))));
 }
 
+// Abbreviated run ID for display; the full adapter-supplied ID stays in title/aria-label.
+const runId = (id) => h("abbr", { class: "run-id", title: id, "aria-label": `run ${id}` },
+  id.length > 8 ? `${id.slice(0, 8)}\u2026` : id);
 const badge = (tone, text, extra = "") => h("span", { class: `badge ${tone} ${extra}`.trim() }, `${ICONS[tone]} ${text}`);
 const replace = (el, ...children) => { el.replaceChildren(...nodes(children)); return el; };
 const fill = (id, ...children) => replace(document.getElementById(id), ...children);
@@ -82,7 +85,7 @@ function render(view) {
   const hero = document.getElementById("hero-proof");
   hero.classList.toggle("not-verified", !verified);
   fill("hero-status", `${verified ? ICONS.pass + " " : ICONS.fail + " "}${view.proof.display_status}`);
-  fill("hero-run", `Recorded run ${view.run_id}`);
+  fill("hero-run", "Recorded run ", runId(view.run_id));
 
   fill("stages", ...view.stages.map((s) => h("li", { class: `stage ${s.tone}`, dataset: { reveal: String(STAGE_STEPS[s.key] || 0) } },
     h("div", { class: "num" }, String(s.step).padStart(2, "0")), h("div", { class: "title" }, s.title), badge(s.tone, s.status))));
@@ -140,7 +143,7 @@ function render(view) {
     h("div", {},
       h("div", { class: "eyebrow", id: "proof-title" }, "Proof of Fix"),
       h("div", { class: "proof-status" }, `${verified ? ICONS.pass : ICONS.fail} ${view.proof.display_status}`),
-      h("div", { class: "hero-run mono" }, `Run ${view.proof.run_id}`),
+      h("div", { class: "hero-run mono" }, "Run ", runId(view.proof.run_id)),
       h("div", { class: "hero-run mono" }, `Generated ${view.proof.generated_at.replace("T", " ").slice(0, 19)} UTC`)),
     h("div", {},
       h("ul", { class: "checklist" }, view.proof.checklist.map((item) => h("li", {},

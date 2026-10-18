@@ -135,8 +135,18 @@ section { margin-bottom: 20px; }
 .legend-item.evidence { border-color: rgba(57, 197, 207, 0.45); }
 
 /* Candidate flow */
-.flow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
-.flow-mid { display: grid; gap: 20px; align-content: start; }
+.flow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.flow-mid { display: grid; gap: 0; align-content: start; }
+/* Evidence -> correction link: a short line from evidence (cyan) to model (purple). */
+.connector {
+  justify-self: center; display: grid; justify-items: center; height: 30px; color: var(--model);
+  font-size: 12px; line-height: 1; padding-top: 18px; position: relative;
+}
+.connector::before {
+  content: ""; position: absolute; top: 0; height: 20px; width: 2px;
+  background: linear-gradient(var(--evidence), var(--model));
+}
+abbr.run-id { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .candidate.fail { border-color: rgba(248, 81, 73, 0.45); }
 .candidate.pass { border-color: rgba(63, 185, 80, 0.5); }
 .origin { font-size: 14px; color: var(--muted); margin: 0 0 12px; }

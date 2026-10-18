@@ -85,3 +85,30 @@ class PatchProposalAttempt(BaseModel):
     validation_result: PatchValidationResult | None = None
     model: str | None = None
     error: str | None = None
+
+
+class VerificationTests(BaseModel):
+    command: list[str]
+    exit_code: int
+    passed: bool
+    failed_tests: list[str]
+    stdout_excerpt: str
+    stderr_excerpt: str
+    duration_ms: int
+    evidence: SandboxResult
+
+
+class PatchVerification(BaseModel):
+    proposal_attempt: PatchProposalAttempt
+    applied: bool = False
+    targeted_tests: VerificationTests | None = None
+    regression_tests: VerificationTests | None = None
+    changed_files: list[str] = Field(default_factory=list)
+    diff_after_apply: str = ""
+    verified: bool = False
+    status: Literal["application_failure", "targeted_test_failure", "regression_failure",
+                    "infrastructure_failure", "timeout", "verified"] = "application_failure"
+    failure_reason: str | None = None
+    risk_notes: list[str] = Field(default_factory=list)
+    workspace_cleaned: bool = False
+    original_unchanged: bool = False

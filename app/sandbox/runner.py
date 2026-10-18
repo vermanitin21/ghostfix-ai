@@ -7,6 +7,7 @@ from time import monotonic
 from uuid import uuid4
 
 from app.sandbox.models import SandboxResult
+from app.sandbox.test_ids import validate_test_ids
 
 
 def _text(value: str | bytes | None) -> str:
@@ -23,7 +24,7 @@ class DockerPytestRunner:
         self._image = image
         self._timeout_seconds = timeout_seconds
 
-    def run(self, project_dir: Path) -> SandboxResult:
+    def run(self, project_dir: Path, test_ids: list[str] | None = None) -> SandboxResult:
         project_dir = project_dir.resolve(strict=True)
         if not project_dir.is_dir():
             raise ValueError(f"Sandbox target is not a directory: {project_dir}")
@@ -31,6 +32,7 @@ class DockerPytestRunner:
         if any(char in str(project_dir) for char in ',"\n\r'):
             raise ValueError("Sandbox path contains unsupported Docker mount characters")
         name = f"ghostfix-pytest-{uuid4().hex}"
+        selectors = validate_test_ids(project_dir, test_ids) if test_ids is not None else ["."]
         command = [
             "docker", "run", "--rm", "--pull=never", f"--name={name}",
             "--network=none", "--user=10001:10001", "--read-only",
@@ -40,7 +42,7 @@ class DockerPytestRunner:
             "--mount", f"type=bind,source={project_dir},target=/workspace,readonly,bind-recursive=disabled",
             "--workdir=/workspace", "--entrypoint=python", self._image,
             "-m", "pytest", "-q", "-r", "f", "--color=no", "--tb=short",
-            "-p", "no:cacheprovider", "--basetemp=/tmp/pytest", ".",
+            "-p", "no:cacheprovider", "--basetemp=/tmp/pytest", *selectors,
         ]
         started = monotonic()
         timed_out = False

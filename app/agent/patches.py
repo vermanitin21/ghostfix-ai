@@ -141,3 +141,43 @@ def validate_patch(
         return PatchValidationResult(valid=False, errors=[str(error)], modified_files=modified,
                                      changed_lines=changed, limits=limits)
     return PatchValidationResult(valid=True, modified_files=modified, changed_lines=changed, limits=limits)
+
+
+def patched_contents(proposal: PatchProposal, context: DiagnosisInput, root: Path,
+                     limits: PatchLimits) -> dict[str, str]:
+    """Compute validated replacement text in memory; never write or execute it."""
+    validation = validate_patch(proposal, context, root, limits)
+    if not validation.valid:
+        raise ValueError("Candidate failed application-boundary validation")
+    sources = {file.path: file.content.replace("\r\n", "\n").splitlines(keepends=True)
+               for file in context.files}
+    lines = proposal.unified_diff.splitlines(keepends=True)
+    outputs: dict[str, str] = {}
+    i = 0
+    while i < len(lines):
+        if not lines[i].startswith("--- a/"):
+            i += 1
+            continue
+        name = lines[i][6:-1]
+        source, output, cursor = sources[name], [], 0
+        i += 2
+        while i < len(lines) and lines[i].startswith("@@ "):
+            match = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", lines[i])
+            start, count, _, new_count = match.groups()
+            count, new_count = int(count or 1), int(new_count or 1)
+            position = int(start) - 1 if count else int(start)
+            output.extend(source[cursor:position])
+            old_seen = new_seen = 0
+            i += 1
+            while old_seen < count or new_seen < new_count:
+                line = lines[i]
+                if line[0] in " -":
+                    old_seen += 1
+                if line[0] in " +":
+                    output.append(line[1:])
+                    new_seen += 1
+                i += 1
+            cursor = position + count
+        output.extend(source[cursor:])
+        outputs[name] = "".join(output)
+    return outputs

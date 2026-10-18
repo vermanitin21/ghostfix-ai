@@ -1,0 +1,294 @@
+{
+  "provenance": {
+    "bundle_schema": "ghostfix-replay-bundle/v1",
+    "run_id": "aa6b79d21b954663b378a40f610d3334",
+    "derived_from": "artifacts/hackathon-demo",
+    "source_sha256": {
+      "proof-of-fix.json": "6c5f0b0f67f595a066a75b35a1e1e7c00da92965ae934feb2a652619b9c9644f",
+      "repair-run.json": "b8429f26c8297f5ac98829cb6555479b921246e02ea4ac32ae3da3553ccb2ece",
+      "demo-summary.json": "ace16a71242ac4b9e9939cb2d3a1463285e3c675b90aac0e5d7703d855687dc2",
+      "model-audit.json": "42f63a3505f861df398e37666d42d93e0101050be02affee5a2c36bec7072eaa"
+    },
+    "builder": "scripts/build_replay_bundle.py",
+    "note": "Recorded evidence from the canonical self-correction demo run; candidate 1 was demo-injected. Replaying it makes no model, network or Docker call."
+  },
+  "issue": {
+    "fixture": "broken_math",
+    "file": "calculator.py",
+    "buggy_source": "def add(left: int, right: int) -> int:\n    \"\"\"Add two integers.\"\"\"\n    return left - right\n"
+  },
+  "proof_of_fix": {
+    "schema_version": "1.0",
+    "generated_at": "2026-10-18T17:52:39.639983Z",
+    "status": "VERIFIED",
+    "verified": true,
+    "reproduction": {
+      "reproduced": true,
+      "failed_tests": [
+        "test_calculator.py::test_adds_two_numbers"
+      ],
+      "exit_code": 1,
+      "stdout_excerpt": "F...                                                                     [100%]\n=================================== FAILURES ===================================\n____________________________ test_adds_two_numbers _____________________________\ntest_calculator.py:5: in test_adds_two_numbers\n    assert add(2, 3) == 5\nE   assert -1 == 5\nE    +  where -1 = add(2, 3)\n=========================== short test summary info ============================\nFAILED test_calculator.py::test_adds_two_numbers - assert -1 == 5\n1 failed, 3 passed in 0.20s\n",
+      "stderr_excerpt": "",
+      "duration_ms": 3250
+    },
+    "diagnosis": {
+      "summary": "The `add` function in calculator.py performs subtraction (left - right) instead of addition, causing test_adds_two_numbers to assert -1 == 5.",
+      "root_cause_hypothesis": "Function body implements subtraction operator (-) rather than addition operator (+).",
+      "suspected_files": [
+        "calculator.py"
+      ],
+      "supporting_evidence": [
+        "calculator.py defines `add` returning `left - right`",
+        "test_calculator.py asserts `add(2, 3) == 5` which evaluates to -1",
+        "test_right_identity and test_negative_right_identity pass because adding 0 preserves the value under subtraction"
+      ],
+      "confidence": 0.95,
+      "model": "nvidia/Nemotron-3_5-Lightning"
+    },
+    "repair_trajectory": [
+      {
+        "attempt_number": 1,
+        "proposal_valid": true,
+        "changed_files": [
+          "calculator.py"
+        ],
+        "summary": "DEMO: deliberately injected valid multiplication candidate; not model-generated",
+        "candidate_diff": "--- a/calculator.py\n+++ b/calculator.py\n@@ -1,3 +1,3 @@\n def add(left: int, right: int) -> int:\n     \"\"\"Add two integers.\"\"\"\n-    return left - right\n+    return left * right\n",
+        "verification_status": "targeted_test_failure",
+        "targeted": {
+          "passed": false,
+          "consistent": true,
+          "pytest_argv": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-r",
+            "f",
+            "--color=no",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            "test_calculator.py::test_adds_two_numbers"
+          ],
+          "exit_code": 1,
+          "failed_tests": [
+            "test_calculator.py::test_adds_two_numbers"
+          ],
+          "stdout_excerpt": "F                                                                        [100%]\n=================================== FAILURES ===================================\n____________________________ test_adds_two_numbers _____________________________\ntest_calculator.py:5: in test_adds_two_numbers\n    assert add(2, 3) == 5\nE   assert 6 == 5\nE    +  where 6 = add(2, 3)\n=========================== short test summary info ============================\nFAILED test_calculator.py::test_adds_two_numbers - assert 6 == 5\n1 failed in 0.17s\n",
+          "stderr_excerpt": "",
+          "duration_ms": 2094,
+          "timed_out": false,
+          "infrastructure_error": null
+        },
+        "regression": null,
+        "failure_reason": "targeted verification failed",
+        "risk_notes": [
+          "Deliberately incorrect demo candidate; must fail verification",
+          "Verification covers only the supplied Python fixture and its existing tests."
+        ]
+      },
+      {
+        "attempt_number": 2,
+        "proposal_valid": true,
+        "changed_files": [
+          "calculator.py"
+        ],
+        "summary": "Fix add function to perform addition instead of subtraction",
+        "candidate_diff": "--- a/calculator.py\n+++ b/calculator.py\n@@ -1,3 +1,3 @@\n def add(left: int, right: int) -> int:\n     \"\"\"Add two integers.\"\"\"\n-    return left - right\n+    return left + right\n",
+        "verification_status": "verified",
+        "targeted": {
+          "passed": true,
+          "consistent": true,
+          "pytest_argv": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-r",
+            "f",
+            "--color=no",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            "test_calculator.py::test_adds_two_numbers",
+            "test_calculator.py::test_right_identity",
+            "test_calculator.py::test_negative_right_identity",
+            "test_calculator.py::test_zero_pair"
+          ],
+          "exit_code": 0,
+          "failed_tests": [],
+          "stdout_excerpt": "....                                                                     [100%]\n4 passed in 0.19s\n",
+          "stderr_excerpt": "",
+          "duration_ms": 2891,
+          "timed_out": false,
+          "infrastructure_error": null
+        },
+        "regression": {
+          "passed": true,
+          "consistent": true,
+          "pytest_argv": [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-r",
+            "f",
+            "--color=no",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            "."
+          ],
+          "exit_code": 0,
+          "failed_tests": [],
+          "stdout_excerpt": "....                                                                     [100%]\n4 passed in 0.14s\n",
+          "stderr_excerpt": "",
+          "duration_ms": 2969,
+          "timed_out": false,
+          "infrastructure_error": null
+        },
+        "failure_reason": "",
+        "risk_notes": [
+          "Changing operator may affect behavior when right operand is non-zero; identity tests should still pass since adding 0 preserves value",
+          "Verification covers only the supplied Python fixture and its existing tests."
+        ]
+      }
+    ],
+    "final_patch": {
+      "attempt_number": 2,
+      "changed_files": [
+        "calculator.py"
+      ],
+      "unified_diff": "--- a/calculator.py\n+++ b/calculator.py\n@@ -1,3 +1,3 @@\n def add(left: int, right: int) -> int:\n     \"\"\"Add two integers.\"\"\"\n-    return left - right\n+    return left + right\n",
+      "additions": 1,
+      "deletions": 1
+    },
+    "verification": {
+      "targeted": {
+        "passed": true,
+        "consistent": true,
+        "pytest_argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-r",
+          "f",
+          "--color=no",
+          "--tb=short",
+          "-p",
+          "no:cacheprovider",
+          "test_calculator.py::test_adds_two_numbers",
+          "test_calculator.py::test_right_identity",
+          "test_calculator.py::test_negative_right_identity",
+          "test_calculator.py::test_zero_pair"
+        ],
+        "exit_code": 0,
+        "failed_tests": [],
+        "stdout_excerpt": "....                                                                     [100%]\n4 passed in 0.19s\n",
+        "stderr_excerpt": "",
+        "duration_ms": 2891,
+        "timed_out": false,
+        "infrastructure_error": null
+      },
+      "regression": {
+        "passed": true,
+        "consistent": true,
+        "pytest_argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-r",
+          "f",
+          "--color=no",
+          "--tb=short",
+          "-p",
+          "no:cacheprovider",
+          "."
+        ],
+        "exit_code": 0,
+        "failed_tests": [],
+        "stdout_excerpt": "....                                                                     [100%]\n4 passed in 0.14s\n",
+        "stderr_excerpt": "",
+        "duration_ms": 2969,
+        "timed_out": false,
+        "infrastructure_error": null
+      },
+      "final_status": "verified",
+      "evidence_issues": []
+    },
+    "integrity": {
+      "original_repository_unchanged": true,
+      "original_hashes_unchanged": null,
+      "workspace_cleaned": true
+    },
+    "risks": [
+      "Passing supplied tests is not mathematical proof of program correctness.",
+      "Coverage is limited to tests actually executed; the current fixture adapter is Python-only.",
+      "No regressions were detected by the executed regression suite.",
+      "Deliberately incorrect demo candidate; must fail verification",
+      "Verification covers only the supplied Python fixture and its existing tests.",
+      "Changing operator may affect behavior when right operand is non-zero; identity tests should still pass since adding 0 preserves value"
+    ],
+    "provenance": {
+      "run_id": "aa6b79d21b954663b378a40f610d3334",
+      "runtime_models": [
+        "nvidia/Nemotron-3_5-Lightning",
+        "demo:injected-not-LLM"
+      ],
+      "attempt_count": 2,
+      "correction_request_sha256": null,
+      "generation_method": "deterministic-evidence-builder/v1",
+      "evidence_derived_fields": [
+        "status",
+        "verified",
+        "reproduction.reproduced",
+        "verification",
+        "integrity",
+        "final_patch"
+      ]
+    }
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "proposal_model": "demo:injected-not-LLM",
+      "demo_injected": true,
+      "correction_evidence_supplied": false,
+      "protocol_retries": 0,
+      "recovery_transformations": [],
+      "applied_diff_against_original": "--- a/calculator.py\n+++ b/calculator.py\n@@ -1,3 +1,3 @@\n def add(left: int, right: int) -> int:\n     \"\"\"Add two integers.\"\"\"\n-    return left - right\n+    return left * right\n"
+    },
+    {
+      "attempt_number": 2,
+      "proposal_model": "nvidia/Nemotron-3_5-Lightning",
+      "demo_injected": false,
+      "correction_evidence_supplied": true,
+      "protocol_retries": 0,
+      "recovery_transformations": [],
+      "applied_diff_against_original": "--- a/calculator.py\n+++ b/calculator.py\n@@ -1,3 +1,3 @@\n def add(left: int, right: int) -> int:\n     \"\"\"Add two integers.\"\"\"\n-    return left - right\n+    return left + right\n"
+    }
+  ],
+  "correction": {
+    "occurred": true,
+    "model": "nvidia/Nemotron-3_5-Lightning",
+    "request_sha256": "fefc56bd21eab795ac4bfbab2db8af556cb07cae29f9bde15e4d627866460f99",
+    "evidence_fields": [
+      "changed_files",
+      "previous_proposal",
+      "regression_tests",
+      "targeted_tests",
+      "verification_status"
+    ],
+    "previous_verification_status": "targeted_test_failure",
+    "targeted_exit_code": 1,
+    "failed_tests": [
+      "test_calculator.py::test_adds_two_numbers"
+    ],
+    "request_contains_attempt_1_evidence": true
+  },
+  "candidate_2_from_original_source": true
+}

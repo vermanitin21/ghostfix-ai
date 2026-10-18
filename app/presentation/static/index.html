@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GhostFix AI - Proof of Fix</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">GF</span>
+      <span class="brand-name">GhostFix AI</span>
+      <span class="brand-tag">Find the bug. Fix the bug. Prove the fix.</span>
+    </div>
+    <div class="controls">
+      <span id="mode" class="mode" role="status" aria-live="polite">Loading recorded evidence...</span>
+      <button id="replay" type="button" disabled>&#9654; Replay demo</button>
+      <button id="pause" type="button" disabled>Pause</button>
+      <button id="reset" type="button" disabled>Reset</button>
+    </div>
+  </header>
+
+  <main id="app" class="container" hidden>
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>Autonomous software repair that verifies its own work.</h1>
+        <p class="lead">GhostFix does not trust generated code. Every candidate runs in an isolated sandbox; a failed run
+          becomes evidence for the next attempt, and only executed tests can produce a Proof of Fix.</p>
+        <dl class="issue">
+          <div><dt>Repository / issue</dt><dd id="issue-file" class="mono"></dd></div>
+          <div><dt>Target test</dt><dd id="issue-target" class="mono"></dd></div>
+          <div><dt>Status</dt><dd id="issue-status"></dd></div>
+        </dl>
+      </div>
+      <div id="hero-proof" class="hero-proof" data-step="9">
+        <div class="eyebrow">Proof of Fix</div>
+        <div id="hero-status" class="hero-status"></div>
+        <div id="hero-run" class="hero-run mono"></div>
+        <div class="hero-scope">Status of this recorded run only - not every GhostFix run succeeds.</div>
+      </div>
+    </section>
+
+    <section aria-labelledby="trajectory-title">
+      <h2 id="trajectory-title" class="section-title">Repair trajectory</h2>
+      <ol id="stages" class="stages"></ol>
+    </section>
+
+    <section class="row-2">
+      <article id="card-repro" class="card" data-step="1"></article>
+      <article id="card-diagnosis" class="card model" data-step="2"></article>
+    </section>
+
+    <aside class="legend" aria-label="Model claim versus executed evidence">
+      <div class="legend-item model"><span class="badge model">&#9670; Model hypothesis</span>What the model believes is wrong. Never treated as proof.</div>
+      <div class="legend-item evidence"><span class="badge evidence">&#9635; Executed evidence</span>What the isolated sandbox actually observed. This decides.</div>
+    </aside>
+
+    <section class="flow" aria-label="Candidate attempts">
+      <article id="card-c1" class="card candidate" data-step="3"></article>
+      <div class="flow-mid">
+        <article id="card-evidence" class="card evidence" data-step="5"></article>
+        <article id="card-correction" class="card model" data-step="6"></article>
+      </div>
+      <article id="card-c2" class="card candidate" data-step="7"></article>
+    </section>
+
+    <section id="card-proof" class="proof" data-step="9" aria-labelledby="proof-title"></section>
+
+    <section class="row-2 secondary">
+      <article class="card" aria-labelledby="bench-title">
+        <h2 id="bench-title" class="card-title">Engineering progress</h2>
+        <div id="bench" class="bench"></div>
+        <p class="note">Same frozen 7-case corpus. One official run per version. Nemotron model. Small corpus; model
+          output is stochastic, so this is engineering evidence, not statistical proof. The demo above is not part of
+          these benchmark results.</p>
+      </article>
+      <article class="card" aria-labelledby="arch-title">
+        <h2 id="arch-title" class="card-title">Architecture</h2>
+        <ol class="arch">
+          <li>Nemotron</li><li>GhostFix agent</li><li>Candidate patch</li><li>Isolated Docker sandbox</li>
+          <li>Targeted + regression tests</li><li>Evidence</li><li>Correction / Proof of Fix</li>
+        </ol>
+        <p class="principle"><span>LLM reasons.</span> <span>GhostFix tools act.</span> <span>Sandbox executes.</span>
+          <strong>Evidence decides.</strong></p>
+      </article>
+    </section>
+
+    <footer id="provenance" class="footer"></footer>
+  </main>
+
+  <div id="unavailable" class="unavailable container" hidden role="alert">
+    <h1>Recorded evidence unavailable</h1>
+    <p>The replay bundle is missing or failed validation, so nothing is displayed. No result is assumed.</p>
+  </div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "name": "GhostFix infrastructure validation",
+  "cases": [
+    {
+      "id": "python-calculator-add-001",
+      "name": "Incorrect arithmetic operator",
+      "description": "The supplied calculator fixture subtracts instead of adding.",
+      "fixture_path": "broken_math",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": ["test_calculator.py::test_adds_two_numbers"],
+      "tags": ["infrastructure", "arithmetic"],
+      "enabled": true,
+      "bug_category": "logic"
+    }
+  ]
+}

@@ -19,6 +19,10 @@ class StructuredOutputError(ValueError):
     """Safe, locally generated error without API response contents."""
 
 
+class OutputBudgetExceeded(StructuredOutputError):
+    """Only raised for an explicit API finish_reason=length."""
+
+
 class LLMClient(Protocol):
     async def complete(self, messages: Sequence[ChatCompletionMessageParam]) -> str:
         """Return a text completion for a chat conversation."""
@@ -82,19 +86,19 @@ class NebiusClient:
                 "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
             }
         else:
-            options = {"response_format": {
+            options = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}, "response_format": {
                 "type": "json_schema",
                 "json_schema": {"name": schema.__name__, "strict": True,
                                 "schema": schema.model_json_schema()},
             }}
         response = await self._client.with_options(timeout=60, max_retries=0).chat.completions.create(
-            model=self._model, messages=list(messages), temperature=0, max_tokens=4096, **options,
+            model=self._model, messages=list(messages), temperature=0, max_tokens=4096 if multiline else 2048, **options,
         )
         if not response.choices:
             raise StructuredOutputError("No structured completion returned")
         choice = response.choices[0]
         if choice.finish_reason == "length":
-            raise StructuredOutputError("Structured completion exceeded the output token budget")
+            raise OutputBudgetExceeded("Structured completion exceeded the output token budget")
         if choice.finish_reason != "stop" or choice.message.refusal or not choice.message.content:
             raise StructuredOutputError("Structured completion refused, empty, or incomplete")
         schema.model_validate_json(choice.message.content)

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.agent.orchestrator import GhostFixOrchestrator
-from app.agent.state import Diagnosis
+from app.agent.state import Diagnosis, ConciseDiagnosis
 from app.core.config import Settings
-from app.llm.nebius_client import CompletionResult, NebiusClient
+from app.llm.nebius_client import CompletionResult, NebiusClient, OutputBudgetExceeded
 from app.sandbox.models import SandboxResult
 from app.tools.files import RepositoryContext
 
@@ -51,7 +51,7 @@ def test_analysis_preserves_evidence_and_validates(repository, content, success)
     assert "test-secret" not in result.context.model_dump_json()
     assert len(result.context.stdout_excerpt) <= 2000
     messages, schema = llm.complete_structured.call_args.args
-    assert schema is Diagnosis
+    assert schema is ConciseDiagnosis
     assert "UNTRUSTED" in messages[0]["content"]
     assert "command" not in json.loads(messages[1]["content"])
 
@@ -114,13 +114,13 @@ def test_structured_client_contract(monkeypatch, finish, content, refusal):
         result = asyncio.run(client.complete_structured([], Diagnosis))
         assert result.model == "returned-model"
     else:
-        with pytest.raises(ValueError):
+        with pytest.raises(OutputBudgetExceeded if finish == "length" else ValueError):
             asyncio.run(client.complete_structured([], Diagnosis))
     request = create.call_args.kwargs
     assert request["response_format"]["type"] == "json_schema"
-    assert request["max_tokens"] == 4096
+    assert request["max_tokens"] == 2048
     assert "tools" not in request
-    assert "extra_body" not in request
+    assert request["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def test_structured_client_multiline_mode(monkeypatch):

@@ -23,6 +23,22 @@ class Diagnosis(BaseModel):
     recommended_next_action: ShortText
 
 
+class ConciseDiagnosis(Diagnosis):
+    """Wire-only v2 limits; archived Diagnosis evidence remains readable."""
+    failure_summary: str = Field(min_length=1, max_length=240)
+    root_cause_hypothesis: str = Field(min_length=1, max_length=400)
+    supporting_evidence: list[Annotated[str, Field(min_length=1, max_length=240)]] = Field(min_length=1, max_length=3)
+    suspected_files: list[Annotated[str, Field(min_length=1, max_length=240)]] = Field(min_length=1, max_length=4)
+    suspected_symbols: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(max_length=4)
+    recommended_next_action: str = Field(min_length=1, max_length=240)
+
+
+class DiagnosisProtocolEvent(BaseModel):
+    call_number: int = Field(ge=1, le=2)
+    outcome: Literal["started", "accepted", "output_budget", "error"]
+    model: str | None = None
+
+
 class ContextFile(BaseModel):
     path: str
     content: str
@@ -45,6 +61,8 @@ class DiagnosisAttempt(BaseModel):
     model: str | None = None
     status: Literal["reproduced", "diagnosed", "failed"] = "reproduced"
     error: str | None = None
+    protocol_retry_count: int = Field(default=0, ge=0, le=1)
+    protocol_events: list[DiagnosisProtocolEvent] = Field(default_factory=list, max_length=2)
 
 
 class PatchProposal(BaseModel):
@@ -74,6 +92,18 @@ class PatchValidationResult(BaseModel):
     modified_files: list[str] = Field(default_factory=list)
     changed_lines: int = 0
     limits: PatchLimits
+    failure_category: Literal["RETRYABLE_FORMAT_ERROR", "SECURITY_POLICY_ERROR", "DISALLOWED_PATH",
+        "TEST_MODIFICATION", "SEMANTICALLY_AMBIGUOUS_PATCH", "UNSUPPORTED_OPERATION", "OTHER_INVALID_PROPOSAL"] | None = None
+
+
+class PatchProtocolEvent(BaseModel):
+    call_number: int = Field(ge=1, le=2)
+    model: str | None = None
+    raw_response_sha256: str
+    raw_model_diff: str
+    normalized_diff: str | None = None
+    normalization_reason: Literal["source_proven_context_prefix"] | None = None
+    validation: PatchValidationResult
 
 
 class PatchProposalAttempt(BaseModel):
@@ -85,6 +115,8 @@ class PatchProposalAttempt(BaseModel):
     validation_result: PatchValidationResult | None = None
     model: str | None = None
     error: str | None = None
+    protocol_retry_count: int = Field(default=0, ge=0, le=1)
+    protocol_events: list[PatchProtocolEvent] = Field(default_factory=list, max_length=2)
 
 
 class VerificationTests(BaseModel):

@@ -1,6 +1,7 @@
 """Coordinates reproduction, diagnosis and candidate proposals; never applies patches."""
 
 import asyncio
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,11 +11,14 @@ from openai import APIStatusError
 from app.agent.prompts import DIAGNOSIS_SYSTEM
 from app.agent.prompts import PATCH_SYSTEM
 from app.agent.prompts import CORRECTION_SYSTEM
+from app.agent.prompts import DIAGNOSIS_CONCISE_RETRY, FORMAT_RETRY_SYSTEM
 from app.agent.state import CorrectionEvidence
-from app.agent.patches import validate_patch
+from app.agent.patches import normalize_context_prefixes, patched_contents
+from app.agent.protocol import format_retry_witness, safe_protocol_record
 from app.agent.state import PatchLimits, PatchProposal, PatchProposalAttempt, PatchValidationResult
-from app.agent.state import Diagnosis, DiagnosisAttempt, DiagnosisInput
-from app.llm.nebius_client import StructuredLLMClient, StructuredOutputError
+from app.agent.state import (Diagnosis, ConciseDiagnosis, DiagnosisAttempt, DiagnosisInput,
+                             DiagnosisProtocolEvent, PatchProtocolEvent)
+from app.llm.nebius_client import StructuredLLMClient, StructuredOutputError, OutputBudgetExceeded
 from app.tools.files import RepositoryContext, redact
 
 from app.sandbox.models import SandboxResult
@@ -47,18 +51,36 @@ class GhostFixOrchestrator:
             files=repository.read_files(paths),
         )
 
-    async def diagnose_failure(self, context: DiagnosisInput) -> tuple[str, Diagnosis]:
+    async def diagnose_failure(self, context: DiagnosisInput, *,
+                               protocol: DiagnosisAttempt | None = None) -> tuple[str, Diagnosis]:
         if self._llm is None:
             raise ValueError("A structured LLM client is required")
-        async with asyncio.timeout(65):
-            response = await self._llm.complete_structured([
-                {"role": "system", "content": DIAGNOSIS_SYSTEM},
-                {"role": "user", "content": context.model_dump_json()},
-            ], Diagnosis)
-        diagnosis = Diagnosis.model_validate_json(response.content)
-        allowed = {file.path for file in context.files}
-        if not set(diagnosis.suspected_files).issubset(allowed):
-            raise ValueError("Diagnosis cited a file outside the supplied context")
+        evidence = context.model_dump_json()
+        for number in (1, 2):
+            event = DiagnosisProtocolEvent(call_number=number, outcome="started")
+            if protocol is not None:
+                protocol.protocol_events.append(event)
+            try:
+                async with asyncio.timeout(65):
+                    response = await self._llm.complete_structured([
+                        {"role": "system", "content": DIAGNOSIS_SYSTEM + (DIAGNOSIS_CONCISE_RETRY if number == 2 else "")},
+                        {"role": "user", "content": evidence},
+                    ], ConciseDiagnosis)
+                diagnosis = Diagnosis.model_validate(ConciseDiagnosis.model_validate_json(response.content).model_dump())
+                allowed = {file.path for file in context.files}
+                if not set(diagnosis.suspected_files).issubset(allowed):
+                    raise ValueError("Diagnosis cited a file outside the supplied context")
+                event.outcome, event.model = "accepted", response.model
+                break
+            except OutputBudgetExceeded:
+                event.outcome = "output_budget"
+                if number == 2:
+                    raise
+                if protocol is not None:
+                    protocol.protocol_retry_count = 1
+            except Exception:
+                event.outcome = "error"
+                raise
         return response.model, diagnosis
 
     async def analyze(self, repository: RepositoryContext, paths: list[str]) -> DiagnosisAttempt:
@@ -69,7 +91,7 @@ class GhostFixOrchestrator:
             return attempt
         try:
             attempt.context = self.gather_context(repository, evidence, paths)
-            attempt.model, attempt.diagnosis = await self.diagnose_failure(attempt.context)
+            attempt.model, attempt.diagnosis = await self.diagnose_failure(attempt.context, protocol=attempt)
             attempt.status = "diagnosed"
         except StructuredOutputError as error:
             attempt.status, attempt.error = "failed", str(error)
@@ -116,18 +138,61 @@ class GhostFixOrchestrator:
             payload = json.dumps(sanitize(payload_data))
             if len(payload.encode("utf-8")) > 60000:
                 raise ValueError("Proposal input exceeds bounded request budget")
-            async with asyncio.timeout(65):
-                response = await self._llm.complete_structured([
-                    {"role": "system", "content": CORRECTION_SYSTEM if correction else PATCH_SYSTEM},
-                    {"role": "user", "content": payload},
-                ], PatchProposal, multiline=True)
-            attempt.model = response.model
-            attempt.proposal = PatchProposal.model_validate_json(response.content)
-            if repository.read_files([file.path for file in context.files]) != context.files:
-                raise ValueError("Repository context changed during proposal generation")
-            if redact(attempt.proposal.unified_diff, repository.secrets) != attempt.proposal.unified_diff:
-                raise ValueError("Sensitive content in candidate diff")
-            attempt.validation_result = validate_patch(attempt.proposal, context, repository.root, limits)
+            system = CORRECTION_SYSTEM if correction else PATCH_SYSTEM
+            expected_intent = None
+            for number in (1, 2):
+                if repository.read_files([file.path for file in context.files]) != context.files:
+                    raise ValueError("Repository context changed before proposal call")
+                attempt.protocol_retry_count = number - 1
+                async with asyncio.timeout(65):
+                    response = await self._llm.complete_structured([
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": payload},
+                    ], PatchProposal, multiline=True)
+                raw = PatchProposal.model_validate_json(response.content)
+                candidate, validation, normalized = normalize_context_prefixes(raw, context, repository.root, limits)
+                safe = safe_protocol_record(candidate.model_dump(), repository.secrets)
+                if safe != candidate.model_dump():
+                    validation = PatchValidationResult(valid=False, errors=["Sensitive or absolute-path response content"],
+                        limits=limits, failure_category="SECURITY_POLICY_ERROR")
+                if repository.read_files([file.path for file in context.files]) != context.files:
+                    raise ValueError("Repository context changed during proposal generation")
+                witness = None
+                if not validation.valid and safe == candidate.model_dump():
+                    witness = format_retry_witness(raw, context, repository.root, limits)
+                    if witness is not None:
+                        validation = validation.model_copy(update={"failure_category": "RETRYABLE_FORMAT_ERROR"})
+                if expected_intent is not None and validation.valid:
+                    if (set(candidate.target_files) != set(expected_intent.target_files)
+                            or candidate.tests_to_run != expected_intent.tests_to_run
+                            or patched_contents(candidate, context, repository.root, limits)
+                            != patched_contents(expected_intent, context, repository.root, limits)):
+                        validation = PatchValidationResult(valid=False, errors=["Protocol retry changed repair intent"],
+                            limits=limits, failure_category="SEMANTICALLY_AMBIGUOUS_PATCH")
+                attempt.model = safe_protocol_record(response.model, repository.secrets)
+                attempt.proposal = PatchProposal.model_validate(safe)
+                attempt.validation_result = validation
+                attempt.protocol_events.append(PatchProtocolEvent(
+                    call_number=number, model=attempt.model,
+                    raw_response_sha256=hashlib.sha256(response.content.encode("utf-8")).hexdigest(),
+                    raw_model_diff=safe_protocol_record(raw.unified_diff, repository.secrets),
+                    normalized_diff=safe_protocol_record(candidate.unified_diff, repository.secrets) if normalized else None,
+                    normalization_reason="source_proven_context_prefix" if normalized else None,
+                    validation=validation))
+                if validation.valid or witness is None or number == 2:
+                    break
+                expected_intent = witness
+                # No diagnosis, sandbox logs or correction/test-verification evidence
+                # enters the format retry. Intent is proven locally before retrying.
+                payload = json.dumps(safe_protocol_record({
+                    "previous_proposal": raw.model_dump(),
+                    "validation_feedback": ["RETRYABLE_FORMAT_ERROR", *[error[:200] for error in validation.errors[:2]]],
+                    "original_files": [file.model_dump() for file in context.files],
+                    "limits": limits.model_dump(),
+                }, repository.secrets))
+                if len(payload.encode("utf-8")) > 60000:
+                    raise ValueError("Protocol retry input exceeds bounded request budget")
+                system = FORMAT_RETRY_SYSTEM
         except Exception as error:
             attempt.error = (str(error) if isinstance(error, StructuredOutputError)
                              else f"Patch proposal failed ({type(error).__name__})")

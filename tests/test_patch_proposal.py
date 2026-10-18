@@ -126,11 +126,12 @@ def test_rejects_whole_file_deletion(context, tmp_path):
 
 def test_multiple_hunks_and_two_files(context, tmp_path):
     context.files[0].content = "a = 1\nb = 2\nc = 3\n"
+    context.files.append(ContextFile(path="helper.py", content="x = 1\n"))
     diff = ("--- a/calculator.py\n+++ b/calculator.py\n@@ -1 +1 @@\n-a = 1\n+a = 2\n"
             "@@ -3 +3 @@\n-c = 3\n+c = 4\n"
-            "--- a/test_calculator.py\n+++ b/test_calculator.py\n@@ -1 +1 @@\n"
-            "-assert add(2,3) == 5\n+assert add(2, 3) == 5\n")
-    assert validate_patch(proposal(diff, ["calculator.py", "test_calculator.py"]), context, tmp_path).valid
+            "--- a/helper.py\n+++ b/helper.py\n@@ -1 +1 @@\n"
+            "-x = 1\n+x = 2\n")
+    assert validate_patch(proposal(diff, ["calculator.py", "helper.py"]), context, tmp_path).valid
 
 
 def test_rejects_unsupported_test_reference(context, tmp_path):

@@ -11,7 +11,7 @@ from pathlib import Path
 from app.agent.orchestrator import GhostFixOrchestrator
 from app.agent.patches import validate_patch
 from app.agent.repair import RepairLoop
-from app.agent.state import PatchLimits, PatchProposal, PatchProposalAttempt
+from app.agent.state import PatchLimits, PatchProposal, PatchProposalAttempt, RepairRun
 from app.agent.verification import PatchVerifier
 from app.core.config import get_settings
 from app.llm.nebius_client import NebiusClient
@@ -32,7 +32,7 @@ class DemoAgent(GhostFixOrchestrator):
             raise ValueError("Demo requires the known unchanged broken_math fixture")
         incorrect = source.replace("return left - right", "return left * right")
         proposal = PatchProposal(
-            target_files=["calculator.py"], summary="DEMO: deliberately incorrect multiplication",
+            target_files=["calculator.py"], summary="DEMO: deliberately injected valid multiplication candidate; not model-generated",
             rationale="Controlled safe first candidate to demonstrate evidence-driven correction",
             unified_diff="".join(difflib.unified_diff(source.splitlines(keepends=True),
                 incorrect.splitlines(keepends=True), fromfile="a/calculator.py", tofile="b/calculator.py")),
@@ -63,7 +63,8 @@ class AuditedNebiusClient(NebiusClient):
         return response
 
 
-async def verify() -> int:
+async def run_demo() -> tuple[RepairRun, dict]:
+    """Return the actual in-memory run and audit summary for integration callers."""
     settings = get_settings()
     if settings.nebius_model != "nvidia/Nemotron-3_5-Lightning":
         raise ValueError("Use the confirmed Nemotron model")
@@ -107,12 +108,16 @@ async def verify() -> int:
             "correction_request_sha256": client.correction_request_sha256,
             "real_correction_model": client.correction_response_model,
         }
-        # Remote model names are untrusted too; redact the known credential.
-        output = json.dumps(report, indent=2).replace(settings.nebius_api_key.get_secret_value(), "[REDACTED]")
-        print(output)
-        return 0 if verified else 1
+        return run, report
     finally:
         await client.close()
+
+
+async def verify() -> int:
+    _, report = await run_demo()
+    key = get_settings().nebius_api_key.get_secret_value()
+    print(json.dumps(report, indent=2).replace(key, "[REDACTED]"))
+    return 0 if report["verified"] else 1
 
 
 def main() -> int:

@@ -50,6 +50,12 @@ rather than modifying a test file.
 
 ## Source-proven normalization
 
+> Superseded by [patch-protocol-v3.md](patch-protocol-v3.md):
+> `normalize_context_prefixes` became `app/agent/recovery.recover_representation`.
+> Prefix recovery keeps the rules below. A missing final LF on an otherwise valid
+> diff is now canonicalized deterministically rather than retried. The v2 replay
+> results below are historical and are not rewritten.
+
 normalize_context_prefixes first runs ordinary strict validation. A valid proposal
 is returned unchanged. Otherwise, a private pass through the same bounded parser
 may insert exactly one space before an unprefixed hunk line only when:

@@ -13,8 +13,9 @@ from app.agent.prompts import PATCH_SYSTEM
 from app.agent.prompts import CORRECTION_SYSTEM
 from app.agent.prompts import DIAGNOSIS_CONCISE_RETRY, FORMAT_RETRY_SYSTEM
 from app.agent.state import CorrectionEvidence
-from app.agent.patches import normalize_context_prefixes, patched_contents
+from app.agent.patches import patched_contents
 from app.agent.protocol import format_retry_witness, safe_protocol_record
+from app.agent.recovery import recover_representation
 from app.agent.state import PatchLimits, PatchProposal, PatchProposalAttempt, PatchValidationResult
 from app.agent.state import (Diagnosis, ConciseDiagnosis, DiagnosisAttempt, DiagnosisInput,
                              DiagnosisProtocolEvent, PatchProtocolEvent)
@@ -150,7 +151,10 @@ class GhostFixOrchestrator:
                         {"role": "user", "content": payload},
                     ], PatchProposal, multiline=True)
                 raw = PatchProposal.model_validate_json(response.content)
-                candidate, validation, normalized = normalize_context_prefixes(raw, context, repository.root, limits)
+                # Deterministic recovery precedes, and never broadens, the model format retry.
+                recovery = recover_representation(raw, context, repository.root, limits)
+                candidate, validation = recovery.candidate, recovery.validation
+                normalized = bool(recovery.transformations)
                 safe = safe_protocol_record(candidate.model_dump(), repository.secrets)
                 if safe != candidate.model_dump():
                     validation = PatchValidationResult(valid=False, errors=["Sensitive or absolute-path response content"],
@@ -177,8 +181,14 @@ class GhostFixOrchestrator:
                     raw_response_sha256=hashlib.sha256(response.content.encode("utf-8")).hexdigest(),
                     raw_model_diff=safe_protocol_record(raw.unified_diff, repository.secrets),
                     normalized_diff=safe_protocol_record(candidate.unified_diff, repository.secrets) if normalized else None,
-                    normalization_reason="source_proven_context_prefix" if normalized else None,
-                    validation=validation))
+                    normalization_reason=None if not normalized else (
+                        "source_proven_context_prefix"
+                        if {t.category for t in recovery.transformations} == {"MISSING_CONTEXT_PREFIX_RECOVERY"}
+                        else "deterministic_representation_recovery"),
+                    validation=validation, raw_validation=recovery.raw_validation,
+                    transformations=safe_protocol_record(
+                        [t.model_dump() for t in recovery.transformations], repository.secrets),
+                    recovery_rejection=recovery.rejection))
                 if validation.valid or witness is None or number == 2:
                     break
                 expected_intent = witness

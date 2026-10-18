@@ -96,14 +96,31 @@ class PatchValidationResult(BaseModel):
         "TEST_MODIFICATION", "SEMANTICALLY_AMBIGUOUS_PATCH", "UNSUPPORTED_OPERATION", "OTHER_INVALID_PROPOSAL"] | None = None
 
 
+class PatchTransformation(BaseModel):
+    """One deterministic representation change; never a semantic edit."""
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    order: int = Field(ge=1)
+    category: Literal["TERMINAL_NEWLINE_CANONICALIZATION", "MISSING_CONTEXT_PREFIX_RECOVERY",
+                      "HUNK_COUNT_METADATA_RECOVERY"]
+    file: str | None = None
+    hunk: int | None = Field(default=None, ge=1)
+    diff_line: int | None = Field(default=None, ge=1)
+    detail: str = Field(max_length=200)
+
+
 class PatchProtocolEvent(BaseModel):
     call_number: int = Field(ge=1, le=2)
     model: str | None = None
     raw_response_sha256: str
     raw_model_diff: str
     normalized_diff: str | None = None
-    normalization_reason: Literal["source_proven_context_prefix"] | None = None
+    normalization_reason: Literal["source_proven_context_prefix", "deterministic_representation_recovery"] | None = None
     validation: PatchValidationResult
+    # v3 additive provenance; historical events default to empty/None.
+    raw_validation: PatchValidationResult | None = None
+    transformations: list[PatchTransformation] = Field(default_factory=list)
+    recovery_rejection: str | None = None
 
 
 class PatchProposalAttempt(BaseModel):

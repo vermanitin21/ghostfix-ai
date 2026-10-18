@@ -9,9 +9,10 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.agent.orchestrator import GhostFixOrchestrator
-from app.agent.patches import normalize_context_prefixes, patched_contents, validate_patch
+from app.agent.patches import patched_contents, validate_patch
 from app.agent.prompts import PATCH_SYSTEM, CORRECTION_SYSTEM, FORMAT_RETRY_SYSTEM
 from app.agent.protocol import format_retry_witness
+from app.agent.recovery import recover_representation
 from app.agent.repair import RepairLoop
 from app.agent.state import (
     ContextFile, Diagnosis, ConciseDiagnosis, DiagnosisAttempt, DiagnosisInput, PatchLimits,
@@ -28,6 +29,12 @@ FENCED = "```diff\n" + DIFF + "```\n"
 PAYLOAD = dict(failure_summary="Unexpected value", suspected_files=["utility.py"],
     suspected_symbols=["value"], root_cause_hypothesis="Unexpected returned value",
     supporting_evidence=["Observed 1, expected 2"], confidence=0.5, recommended_next_action="Inspect value")
+
+
+def normalize_context_prefixes(candidate, context, root, limits):
+    """The v3 pipeline seen through the v2 (candidate, validation, normalized) contract."""
+    result = recover_representation(candidate, context, root, limits)
+    return result.candidate, result.validation, bool(result.transformations)
 
 
 def proposal(diff=DIFF, target="utility.py"):
@@ -134,7 +141,18 @@ def test_policy_violations_never_retried(setup, kind):
     llm.complete_structured.assert_awaited_once()
 
 
-@pytest.mark.parametrize("diff", [FENCED, DIFF.rstrip("\n")])
+def test_missing_final_lf_recovered_without_model_retry(setup):
+    result, llm, _ = call(setup, [proposal(DIFF.rstrip("\n"))])
+    assert result.validation_result.valid and result.protocol_retry_count == 0
+    assert result.proposal.unified_diff == DIFF
+    llm.complete_structured.assert_awaited_once()
+    event = result.protocol_events[0]
+    assert event.raw_model_diff == DIFF.rstrip("\n") and event.normalized_diff == DIFF
+    assert [t.category for t in event.transformations] == ["TERMINAL_NEWLINE_CANONICALIZATION"]
+    assert event.normalization_reason == "deterministic_representation_recovery"
+
+
+@pytest.mark.parametrize("diff", [FENCED])
 def test_one_format_retry_and_same_intent(setup, diff):
     result, llm, _ = call(setup, [proposal(diff), proposal()])
     assert result.validation_result.valid and result.protocol_retry_count == 1

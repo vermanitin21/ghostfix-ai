@@ -35,7 +35,6 @@ def _path(name: str, root: Path, supplied: dict[str, str]) -> str:
 def _validate_patch(
     proposal: PatchProposal, context: DiagnosisInput, approved_root: Path,
     limits: PatchLimits | None = None,
-    recovered: list[str] | None = None,
 ) -> PatchValidationResult:
     """Match hunks against the approved context snapshot, without applying them.
 
@@ -114,12 +113,6 @@ def _validate_patch(
                 i += 1
                 before, after = [], []
                 while len(before) < count or len(after) < new_count:
-                    # Only recover an unambiguously missing prefix at the exact
-                    # original-source cursor. Never reinterpret an existing prefix.
-                    if (recovered is not None and i < len(lines) and lines[i][0] not in " +-"
-                            and position + len(before) < len(source)
-                            and lines[i] == source[position + len(before)]):
-                        lines[i] = " " + lines[i]
                     if i >= len(lines) or lines[i][0] not in " +-":
                         raise ValueError("Malformed or incomplete hunk body")
                     line = lines[i]
@@ -149,8 +142,6 @@ def _validate_patch(
     except ValueError as error:
         return PatchValidationResult(valid=False, errors=[str(error)], modified_files=modified,
                                      changed_lines=changed, limits=limits, failure_category=_category(str(error)))
-    if recovered is not None:
-        recovered.append("".join(lines))
     return PatchValidationResult(valid=True, modified_files=modified, changed_lines=changed, limits=limits)
 
 
@@ -173,21 +164,6 @@ def validate_patch(proposal: PatchProposal, context: DiagnosisInput, approved_ro
                    limits: PatchLimits | None = None) -> PatchValidationResult:
     """Strict public boundary; never normalizes or authorizes protocol retries."""
     return _validate_patch(proposal, context, approved_root, limits)
-
-
-def normalize_context_prefixes(proposal: PatchProposal, context: DiagnosisInput, root: Path,
-                               limits: PatchLimits) -> tuple[PatchProposal, PatchValidationResult, bool]:
-    original = validate_patch(proposal, context, root, limits)
-    if original.valid:
-        return proposal, original, False
-    recovered: list[str] = []
-    checked = _validate_patch(proposal, context, root, limits, recovered)
-    if not checked.valid or not recovered or recovered[0] == proposal.unified_diff:
-        return proposal, checked, False
-    candidate = proposal.model_copy(update={"unified_diff": recovered[0]})
-    # A separate strict pass is mandatory; application repeats this same boundary.
-    strict = validate_patch(candidate, context, root, limits)
-    return (candidate, strict, True) if strict.valid else (proposal, strict, False)
 
 
 def patched_contents(proposal: PatchProposal, context: DiagnosisInput, root: Path,

@@ -9,6 +9,8 @@ from openai import APIStatusError
 
 from app.agent.prompts import DIAGNOSIS_SYSTEM
 from app.agent.prompts import PATCH_SYSTEM
+from app.agent.prompts import CORRECTION_SYSTEM
+from app.agent.state import CorrectionEvidence
 from app.agent.patches import validate_patch
 from app.agent.state import PatchLimits, PatchProposal, PatchProposalAttempt, PatchValidationResult
 from app.agent.state import Diagnosis, DiagnosisAttempt, DiagnosisInput
@@ -81,6 +83,7 @@ class GhostFixOrchestrator:
     async def propose_patch(
         self, diagnosis_attempt: DiagnosisAttempt, repository: RepositoryContext,
         limits: PatchLimits | None = None,
+        *, correction: CorrectionEvidence | None = None,
     ) -> PatchProposalAttempt:
         limits = limits or PatchLimits()
         attempt = PatchProposalAttempt(diagnosis_attempt=diagnosis_attempt)
@@ -92,16 +95,30 @@ class GhostFixOrchestrator:
             current = repository.read_files([file.path for file in context.files])
             if current != context.files:
                 raise ValueError("Repository context changed since diagnosis")
-            payload = json.dumps({
+            payload_data = {
                 "evidence_and_context": context.model_dump(),
                 "diagnosis": diagnosis_attempt.diagnosis.model_dump(), "limits": limits.model_dump(),
                 "numbered_lines": {file.path: [f"{number}: {line}" for number, line
                                                in enumerate(file.content.splitlines(), 1)]
                                    for file in context.files},
-            })
+            }
+            if correction is not None:
+                payload_data["correction_evidence"] = correction.model_dump()
+            # Redact all strings, including prior model output, before serialization.
+            def sanitize(value):
+                if isinstance(value, str):
+                    return redact(value, repository.secrets)
+                if isinstance(value, list):
+                    return [sanitize(item) for item in value]
+                if isinstance(value, dict):
+                    return {key: sanitize(item) for key, item in value.items()}
+                return value
+            payload = json.dumps(sanitize(payload_data))
+            if len(payload.encode("utf-8")) > 60000:
+                raise ValueError("Proposal input exceeds bounded request budget")
             async with asyncio.timeout(65):
                 response = await self._llm.complete_structured([
-                    {"role": "system", "content": PATCH_SYSTEM},
+                    {"role": "system", "content": CORRECTION_SYSTEM if correction else PATCH_SYSTEM},
                     {"role": "user", "content": payload},
                 ], PatchProposal, multiline=True)
             attempt.model = response.model

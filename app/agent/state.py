@@ -112,3 +112,43 @@ class PatchVerification(BaseModel):
     risk_notes: list[str] = Field(default_factory=list)
     workspace_cleaned: bool = False
     original_unchanged: bool = False
+
+
+class CorrectionTestEvidence(BaseModel):
+    exit_code: int
+    passed: bool
+    failed_tests: list[str] = Field(max_length=10)
+    stdout_excerpt: str = Field(max_length=2000)
+    stderr_excerpt: str = Field(max_length=2000)
+
+
+class CorrectionEvidence(BaseModel):
+    """Only bounded observations; intentionally excludes command and host paths."""
+    previous_proposal: PatchProposal
+    verification_status: Literal["targeted_test_failure", "regression_failure"]
+    targeted_tests: CorrectionTestEvidence | None
+    regression_tests: CorrectionTestEvidence | None
+    changed_files: list[str] = Field(max_length=4)
+
+
+class RepairAttempt(BaseModel):
+    attempt_number: int = Field(ge=1, le=2)
+    proposal_attempt: PatchProposalAttempt
+    verification: PatchVerification | None = None
+    outcome: Literal["verified", "proposal_failure", "application_failure", "targeted_test_failure",
+                     "regression_failure", "infrastructure_failure", "timeout"] = "proposal_failure"
+    correction_evidence: CorrectionEvidence | None = None
+
+
+class RepairRun(BaseModel):
+    run_id: str = Field(default_factory=lambda: uuid4().hex)
+    initial_diagnosis: DiagnosisAttempt
+    attempts: list[RepairAttempt] = Field(default_factory=list, max_length=2)
+    verified: bool = False
+    final_verification: PatchVerification | None = None
+    status: Literal["verified", "retry_exhausted", "proposal_failure", "application_failure",
+                    "infrastructure_failure", "timeout"] = "proposal_failure"
+    stop_reason: str = ""
+    max_attempts: int = Field(default=2, ge=1, le=2, strict=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: datetime | None = None

@@ -326,7 +326,8 @@ def test_mock_cli_artifacts_and_fixture_integrity(tmp_path, monkeypatch, capsys)
     def write(path, data, **kwargs):
         return original_write(tmp_path / path.name, data, **kwargs)
     monkeypatch.setattr(Path, "write_text", write)
-    monkeypatch.setattr("sys.argv", ["run_benchmark", "--manifest", str(ROOT / "benchmarks/manifest.json"), "--mode", "mock"])
+    monkeypatch.setattr("sys.argv", ["run_benchmark", "--manifest", str(ROOT / "benchmarks/manifest.json"),
+                                   "--mode", "mock", "--case", "python-calculator-add-001"])
     assert script.main() == 0
     report = BenchmarkRun.model_validate_json((tmp_path / "benchmark-results.json").read_text(encoding="utf-8"))
     assert report.mode == "mock" and report.metrics.verified_cases == 1

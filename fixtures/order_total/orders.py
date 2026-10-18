@@ -1,0 +1,8 @@
+from pricing import subtotal, discounted_total
+
+
+def order_total(prices, discount):
+    """Shipping costs 5 below a pre-discount subtotal of 50; otherwise it is free."""
+    total = discounted_total(prices, discount)
+    shipping = 5 if total < 50 else 0
+    return total + shipping

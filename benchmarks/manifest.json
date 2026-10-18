@@ -1,18 +1,125 @@
 {
   "schema_version": "1.0",
-  "name": "GhostFix infrastructure validation",
+  "name": "GhostFix Benchmark Corpus v1",
   "cases": [
     {
+      "id": "python-active-users-001",
+      "name": "Active contact selection",
+      "description": "Select unique active contacts while preserving first-active order.",
+      "fixture_path": "active_users",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": [
+        "test_users.py::test_active_record_after_inactive_record"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
+      "enabled": true,
+      "bug_category": "collection",
+      "difficulty": "medium"
+    },
+    {
       "id": "python-calculator-add-001",
-      "name": "Incorrect arithmetic operator",
-      "description": "The supplied calculator fixture subtracts instead of adding.",
+      "name": "Integer addition",
+      "description": "Add two signed integers.",
       "fixture_path": "broken_math",
       "language": "python",
       "framework": "pytest",
-      "expected_failing_tests": ["test_calculator.py::test_adds_two_numbers"],
-      "tags": ["infrastructure", "arithmetic"],
+      "expected_failing_tests": [
+        "test_calculator.py::test_adds_two_numbers"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
       "enabled": true,
-      "bug_category": "logic"
+      "bug_category": "logic-operator",
+      "difficulty": "easy"
+    },
+    {
+      "id": "python-configured-limit-001",
+      "name": "Configuration error handling",
+      "description": "Distinguish an absent limit from an invalid supplied value.",
+      "fixture_path": "configured_limit",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": [
+        "test_limits.py::test_invalid_supplied_limit_propagates"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
+      "enabled": true,
+      "bug_category": "error-handling",
+      "difficulty": "harder"
+    },
+    {
+      "id": "python-order-total-001",
+      "name": "Order total with discount",
+      "description": "Combine discounts and shipping while preserving order-value eligibility.",
+      "fixture_path": "order_total",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": [
+        "test_orders.py::test_discount_preserves_shipping_eligibility"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
+      "enabled": true,
+      "bug_category": "integration-regression",
+      "difficulty": "harder"
+    },
+    {
+      "id": "python-pagination-001",
+      "name": "Page boundaries",
+      "description": "Return complete one-based pages with validated bounds.",
+      "fixture_path": "boundary_page",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": [
+        "test_pagination.py::test_complete_page"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
+      "enabled": true,
+      "bug_category": "boundary",
+      "difficulty": "easy"
+    },
+    {
+      "id": "python-parse-port-001",
+      "name": "Port input validation",
+      "description": "Validate integer port inputs and range boundaries.",
+      "fixture_path": "parse_port",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": [
+        "test_ports.py::test_non_integer_notation_rejected"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
+      "enabled": true,
+      "bug_category": "validation",
+      "difficulty": "medium"
+    },
+    {
+      "id": "python-shipping-eligibility-001",
+      "name": "Shipping eligibility",
+      "description": "Determine shipping eligibility from order value and membership.",
+      "fixture_path": "shipping_eligibility",
+      "language": "python",
+      "framework": "pytest",
+      "expected_failing_tests": [
+        "test_eligibility.py::test_independent_qualifications"
+      ],
+      "tags": [
+        "corpus-v1"
+      ],
+      "enabled": true,
+      "bug_category": "conditional",
+      "difficulty": "medium"
     }
   ]
 }

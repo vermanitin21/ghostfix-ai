@@ -1,0 +1,6 @@
+def page(items, number, size):
+    """Return a one-based page; require positive page number and size."""
+    if number < 1 or size < 1:
+        raise ValueError("Page number and size must be positive")
+    start = (number - 1) * size
+    return items[start:start + size - 1]

@@ -1,3 +1,3 @@
 def add(left: int, right: int) -> int:
-    """Add two integers (intentionally broken for the repair fixture)."""
+    """Add two integers."""
     return left - right
